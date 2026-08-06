@@ -216,3 +216,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Data & checkpoints (trop lourds pour Git)
+/data/*
+!/data/.gitkeep
+/checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# Node (frontend)
+node_modules/
+.next/
+.env.local
+
+# Résultats volumineux (garder seulement CSV/figures légères)
+results/runs/*.pt
+
+# OS
+.DS_Store
