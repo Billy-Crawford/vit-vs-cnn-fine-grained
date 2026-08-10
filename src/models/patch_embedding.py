@@ -46,7 +46,7 @@ class PatchEmbedding(nn.Module):
         x : [B, 3, 224, 224]
 
         retourne :
-        [B, num_patches, embed_dim]
+            [B, num_patches, embed_dim]
         """
 
         # [B, 3, 224, 224]
