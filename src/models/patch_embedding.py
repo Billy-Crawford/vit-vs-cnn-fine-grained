@@ -60,4 +60,3 @@ class PatchEmbedding(nn.Module):
 
         # [B, num_patches, embed_dim]
         return x
-
