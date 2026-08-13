@@ -235,3 +235,22 @@ results/runs/*.pt
 
 # OS
 .DS_Store
+
+*.pyc
+
+# Data (trop lourd pour Git, sauf les fichiers traités)
+/data/*
+!/data/.gitkeep
+!/data/data_processed/
+!/data/data_processed/**
+
+# MLflow / checkpoints
+mlruns/
+mlflow.db
+*.pt
+*.pth
+*.ckpt
+
+# Notebook / tests
+.ipynb_checkpoints/
+tests/tmp/
