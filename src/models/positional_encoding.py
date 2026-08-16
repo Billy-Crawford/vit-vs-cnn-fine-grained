@@ -28,11 +28,16 @@ class PositionalEncoding(nn.Module):
         # Un embedding de position pour chaque token.
         # +1 correspond au token [CLS].
         self.position_embeddings = nn.Parameter(
-            torch.randn(
+            torch.zeros(
                 1,
                 num_patches + 1,
                 embed_dim
             )
+        )
+
+        nn.init.trunc_normal_(
+            self.position_embeddings,
+            std=0.02
         )
 
     def forward(self, x):

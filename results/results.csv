@@ -1,0 +1,4 @@
+model,test_loss,test_accuracy
+ViT Scratch,5.1762,0.0107
+ViT Pretrained,4.7610,0.0885
+ResNet50,1.0536,0.7187

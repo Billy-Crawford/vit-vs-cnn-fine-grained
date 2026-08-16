@@ -21,8 +21,7 @@ class ViTPretrained(nn.Module):
     def __init__(
         self,
         num_classes=200,
-        # pretrained=True
-        pretrained=False
+        pretrained=True
     ):
         super().__init__()
 

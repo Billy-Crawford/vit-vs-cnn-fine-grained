@@ -20,7 +20,12 @@ class CLSToken(nn.Module):
 
         # Token [CLS] apprenable.
         self.cls_token = nn.Parameter(
-            torch.randn(1, 1, embed_dim)
+            torch.zeros(1, 1, embed_dim)
+        )
+
+        nn.init.trunc_normal_(
+            self.cls_token,
+            std=0.02
         )
 
     def forward(self, x):
