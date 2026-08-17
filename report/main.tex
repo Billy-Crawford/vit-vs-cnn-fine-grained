@@ -1,0 +1,46 @@
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage[margin=2cm]{geometry}
+
+\title{ViT vs CNN : une étude comparative sur classification fine-grained}
+\author{
+  Prénom Nom A \and Prénom Nom B \and Prénom Nom C \\
+  M1 IA — ESGIS
+}
+\date{\today}
+
+\begin{document}
+
+\twocolumn[
+  \begin{@twocolumnfalse}
+    \maketitle
+    \begin{abstract}
+    % Résumé à rédiger en dernier, une fois les résultats disponibles (~150-200 mots).
+    % Doit couvrir : problème traité, méthode, résultats principaux, conclusion.
+    TODO: résumé.
+    \end{abstract}
+    \vspace{1em}
+  \end{@twocolumnfalse}
+]
+
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/methodology}
+\input{sections/data}
+\input{sections/ablation}
+\input{sections/deployment}
+\input{sections/discussion}
+\input{sections/contributions}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

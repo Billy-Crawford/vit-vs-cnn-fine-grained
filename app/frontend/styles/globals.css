@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --paper: #f6f1e7;
+  --paper-card: #fcfaf3;
+  --ink: #1e2b20;
+  --ink-soft: #4a5548;
+  --sage: #3f6b4f;
+  --sage-dim: #6f8c78;
+  --rust: #b24a2e;
+  --line: #dcd2b8;
+  --line-strong: #c7b98f;
+
+  --font-display: 'Fraunces', serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+body {
+  background-image: radial-gradient(circle at 1px 1px, rgba(30, 43, 32, 0.05) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: var(--sage);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--sage);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

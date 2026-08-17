@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pillow
+numpy
+
+# À décommenter une fois le vrai chargement de modèle activé (USE_MOCK=False)
+# torch
+# torchvision
+# timm
