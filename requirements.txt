@@ -1,8 +1,13 @@
 pandas
-numpy
 pillow
 scikit-learn
-torch
-torchvision
 matplotlib
-mlflow
+
+numpy==1.26.4
+scipy==1.13.1
+
+torch==2.2.2
+torchvision==0.17.2
+timm==1.0.28
+
+mlflow==3.15.1

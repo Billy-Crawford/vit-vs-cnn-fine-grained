@@ -40,10 +40,14 @@ def get_train_transform(strength='weak'):
         raise ValueError(f"strength inconnu: {strength}")
 
 
-# --- Alias de compatibilité (anciens noms utilisés par certaines branches) ---
+# --- Alias de compatibilité (utilisés par src/train/*.py de B) ---
 def get_eval_transforms():
     return get_val_transform()
 
 
-def get_train_transforms():
-    return get_train_transform(strength='weak')
+def get_train_transforms(augment=True):
+    """Alias compatible avec l'appel get_train_transforms(augment=True)
+    utilisé dans les scripts d'entraînement de B."""
+    if augment:
+        return get_train_transform(strength='weak')
+    return get_val_transform()

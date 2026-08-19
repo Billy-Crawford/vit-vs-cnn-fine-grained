@@ -11,6 +11,7 @@ from src.train.trainer import Trainer
 
 BATCH_SIZE = 32
 EPOCHS = 3
+PATCH_SIZE = 32
 LEARNING_RATE = 1e-4
 
 NUM_CLASSES = 200
@@ -43,7 +44,8 @@ train_loader, val_loader, test_loader = create_dataloaders(
 
 model = ViTPretrained(
     num_classes=NUM_CLASSES,
-    pretrained=True
+    pretrained=True,
+    patch_size=PATCH_SIZE
 )
 
 
@@ -68,7 +70,7 @@ trainer = Trainer(
     val_loader=val_loader,
     optimizer=optimizer,
     device=DEVICE,
-    save_path="results/runs/vit_pretrained_best.pth"
+    save_path="results/runs/vit_pretrained_patch32_best.pth"
 )
 
 
@@ -95,8 +97,5 @@ print("=" * 60)
 # Training
 # ==========================================================
 
-history = trainer.fit(
-    EPOCHS,
-    max_train_batches=10
-)
+history = trainer.fit(EPOCHS)
 
