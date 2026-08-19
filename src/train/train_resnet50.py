@@ -15,6 +15,7 @@ LEARNING_RATE = 1e-4
 
 NUM_CLASSES = 200
 
+TRAIN_FRAC = 1.0
 
 # ==========================================================
 # Device
@@ -33,7 +34,8 @@ else:
 # ==========================================================
 
 train_loader, val_loader, test_loader = create_dataloaders(
-    batch_size=BATCH_SIZE
+    batch_size=BATCH_SIZE,
+    train_frac=TRAIN_FRAC
 )
 
 
@@ -87,6 +89,7 @@ print(f"Device        : {DEVICE}")
 print(f"Train         : {len(train_loader.dataset)}")
 print(f"Validation    : {len(val_loader.dataset)}")
 print(f"Test          : {len(test_loader.dataset)}")
+print(f"Train fraction : {TRAIN_FRAC}")
 
 print("=" * 60)
 

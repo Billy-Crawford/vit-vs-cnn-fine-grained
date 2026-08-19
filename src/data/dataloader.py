@@ -5,7 +5,7 @@ from src.data.transforms import (
     get_train_transforms,
     get_eval_transforms,
 )
-
+import torch
 
 METADATA_PATH = "data/metadata.csv"
 
@@ -19,6 +19,8 @@ TEST_SPLIT = "data/split_test.csv"
 def create_dataloaders(
     batch_size=32,
     num_workers=0,
+    augment=True,
+    train_frac=1.0,
 ):
     """
     Crée les DataLoaders Train, Validation et Test.
@@ -29,8 +31,19 @@ def create_dataloaders(
         metadata_path=METADATA_PATH,
         split_path=TRAIN_SPLIT,
         image_root=IMAGE_ROOT,
-        transform=get_train_transforms(),
+        transform=get_train_transforms(
+            augment=augment
+        ),
     )
+
+    if train_frac < 1.0:
+        train_size = int(len(train_dataset) * train_frac)
+
+        train_dataset, _ = torch.utils.data.random_split(
+            train_dataset,
+            [train_size, len(train_dataset) - train_size],
+            generator=torch.Generator().manual_seed(42)
+        )
 
     # Dataset de validation
     val_dataset = CUBDataset(

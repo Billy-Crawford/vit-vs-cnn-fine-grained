@@ -222,7 +222,6 @@ __marimo__/
 !/data/.gitkeep
 /checkpoints/
 *.pt
-*.pth
 *.ckpt
 
 # Node (frontend)
@@ -235,3 +234,12 @@ results/runs/*.pt
 
 # OS
 .DS_Store
+
+# MLflow local
+mlflow.db
+mlruns/
+*.db
+
+# Model checkpoints
+*.pt
+*.ckpt

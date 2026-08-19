@@ -10,12 +10,15 @@ from src.train.trainer import Trainer
 # ==========================================================
 
 BATCH_SIZE = 32
-EPOCHS = 1
+EPOCHS = 3
 LEARNING_RATE = 1e-4
 
 NUM_CLASSES = 200
 PATCH_SIZE = 16
 
+AUGMENT = False
+
+TRAIN_FRAC = 1.0
 
 # ==========================================================
 # Device
@@ -34,7 +37,9 @@ else:
 # ==========================================================
 
 train_loader, val_loader, test_loader = create_dataloaders(
-    batch_size=BATCH_SIZE
+    batch_size=BATCH_SIZE,
+    augment=AUGMENT,
+    train_frac=TRAIN_FRAC
 )
 
 
@@ -69,7 +74,7 @@ trainer = Trainer(
     val_loader=val_loader,
     optimizer=optimizer,
     device=DEVICE,
-    save_path="results/runs/vit_scratch_best.pth"
+    save_path="results/runs/vit_scratch_patch16_noaug_best.pth"
 )
 
 
@@ -89,12 +94,10 @@ print(f"Device     : {DEVICE}")
 print(f"Train     : {len(train_loader.dataset)}")
 print(f"Validation: {len(val_loader.dataset)}")
 print(f"Test      : {len(test_loader.dataset)}")
+print(f"Augmentation : {AUGMENT}")
+print(f"Train fraction : {TRAIN_FRAC}")
 print("=" * 60)
 
 history = trainer.fit(EPOCHS)
 
-# history = trainer.fit(
-#     EPOCHS,
-#     max_train_batches=10
-# )
 

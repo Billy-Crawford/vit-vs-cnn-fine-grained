@@ -6,9 +6,8 @@ class ViTPretrained(nn.Module):
     """
     Vision Transformer pré-entraîné sur ImageNet.
 
-    Le backbone ViT est chargé depuis timm avec ses
-    poids ImageNet, puis sa tête de classification est
-    remplacée pour CUB-200-2011 (200 classes).
+    Backbone ViT fourni par timm avec poids ImageNet,
+    puis tête de classification adaptée à CUB-200-2011.
 
     Parameters
     ----------
@@ -16,17 +15,39 @@ class ViTPretrained(nn.Module):
         Nombre de classes de la tâche cible.
     pretrained : bool
         Si True, charge les poids ImageNet.
+    patch_size : int
+        Taille des patches : 16 ou 32.
     """
 
     def __init__(
         self,
         num_classes=200,
-        pretrained=True
+        pretrained=True,
+        patch_size=16
     ):
         super().__init__()
 
+        # ------------------------------------------------------
+        # Sélection du backbone selon la taille des patches
+        # ------------------------------------------------------
+
+        if patch_size == 16:
+            model_name = "vit_small_patch16_224"
+
+        elif patch_size == 32:
+            model_name = "vit_small_patch32_224"
+
+        else:
+            raise ValueError(
+                "patch_size doit être 16 ou 32."
+            )
+
+        # ------------------------------------------------------
+        # Création du ViT
+        # ------------------------------------------------------
+
         self.model = timm.create_model(
-            "vit_small_patch16_224",
+            model_name,
             pretrained=pretrained,
             num_classes=num_classes
         )
@@ -45,3 +66,4 @@ class ViTPretrained(nn.Module):
         """
 
         return self.model(x)
+
