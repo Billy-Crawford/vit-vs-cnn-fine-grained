@@ -5,15 +5,18 @@
 export default function PredictionCard({ modelName, prediction, classNames }) {
   if (!prediction) return null;
 
-  const label = (classId) => classNames?.[classId] ?? `Espèce n°${String(classId).padStart(3, "0")}`;
+  // Résout le nom lisible d'une classe, ou retombe sur un numéro d'espèce
+  // formaté sur 3 chiffres si le référentiel de noms n'est pas encore chargé.
+  const label = (classId) =>
+    classNames?.[classId] ?? `Espèce n°${String(classId).padStart(3, "0")}`;
 
   return (
     <div
       style={{
-        flex: 1,
         border: "1px solid var(--line)",
         borderRadius: 4,
         background: "var(--paper-card)",
+        boxShadow: "var(--shadow-card)",
         overflow: "hidden",
       }}
     >
@@ -77,6 +80,7 @@ export default function PredictionCard({ modelName, prediction, classNames }) {
             fontSize: 13,
             color: "var(--rust)",
             margin: "0 0 20px",
+            fontVariantNumeric: "tabular-nums",
           }}
         >
           confiance {(prediction.confidence * 100).toFixed(1)}%
@@ -104,10 +108,25 @@ export default function PredictionCard({ modelName, prediction, classNames }) {
                 fontSize: 12.5,
                 marginBottom: 4,
                 color: "var(--ink-soft)",
+                gap: 8,
               }}
             >
-              <span>{label(item.class_id)}</span>
-              <span style={{ fontFamily: "var(--font-mono)" }}>
+              <span
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {label(item.class_id)}
+              </span>
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  flex: "none",
+                  fontVariantNumeric: "tabular-nums",
+                }}
+              >
                 {(item.confidence * 100).toFixed(1)}%
               </span>
             </div>
@@ -118,6 +137,7 @@ export default function PredictionCard({ modelName, prediction, classNames }) {
                   background: i === 0 ? "var(--sage)" : "var(--sage-dim)",
                   height: "100%",
                   borderRadius: 2,
+                  transition: "width 0.4s ease",
                 }}
               />
             </div>

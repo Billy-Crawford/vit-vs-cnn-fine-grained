@@ -4,7 +4,15 @@ python-multipart
 pillow
 numpy
 
+# Tests
+pytest
+httpx
+
 # À décommenter une fois le vrai chargement de modèle activé (USE_MOCK=False)
 # torch
 # torchvision
 # timm
+
+mlflow
+torch
+torchvision

@@ -11,8 +11,11 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 from utils.attention import generate_attention_overlay
+from data.classes import load_class_names
 
 router = APIRouter(tags=["prediction"])
+
+CLASS_NAMES = load_class_names()
 
 MAX_FILE_SIZE_MB = 10
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -43,6 +46,13 @@ def _load_and_validate_image(file: UploadFile, contents: bytes) -> Image.Image:
         raise HTTPException(status_code=400, detail="Image corrompue ou illisible.")
 
     return image
+
+
+@router.get("/classes")
+async def get_classes():
+    """Renvoie le mapping {index: nom_espece} - basé sur les métadonnées
+    du dataset (rôle A), aucune dépendance aux modèles entraînés."""
+    return CLASS_NAMES
 
 
 @router.post("/predict")

@@ -1,44 +1,48 @@
 """
-Chargement des modèles ViT et ResNet-50.
+Chargement des modèles ViT et ResNet-50 - checkpoints réels de B.
 
-État actuel : MOCK. Tant que le rôle B n'a pas livré de checkpoints
-entraînés, ce module renvoie des objets factices qui produisent des
-prédictions aléatoires mais cohérentes en forme (mêmes shapes, mêmes
-types) que les vrais modèles. Ça permet à tout le backend/frontend
-d'être développé et testé sans dépendre de l'avancement de B.
+Les checkpoints (.pth) sont directement dans le repo Git
+(results/runs/*.pth), donc pas besoin d'attendre un export MLflow
+partagé pour les charger : on utilise torch.load() + les vraies classes
+de B (src/models/vit_pretrained.py, src/models/resnet50.py).
 
-Pour brancher les vrais modèles une fois prêts :
-1. Renseigner MODEL_PATHS ci-dessous avec les chemins des checkpoints (.pth)
-2. Mettre USE_MOCK = False
-3. Vérifier que les classes réelles (timm ViT / torchvision ResNet) sont
-   importées correctement - décommenter les imports en bas du fichier.
+QUAND CHANGER DE CHECKPOINT (ex. B livre une meilleure version) :
+mettre à jour VIT_CHECKPOINT / RESNET_CHECKPOINT ci-dessous, et
+VIT_PATCH_SIZE si on change de variante ViT (16 ou 32).
 """
 
+import os
 import random
+import sys
 
-# --- Config à mettre à jour par C une fois les checkpoints de B disponibles ---
-USE_MOCK = True
+# Racine du repo : app/backend/models/loader.py -> remonte à la racine
+_REPO_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..")
+)
+sys.path.insert(0, _REPO_ROOT)
 
-MODEL_PATHS = {
-    "vit": "checkpoints/vit_best.pth",
-    "resnet": "checkpoints/resnet50_best.pth",
-}
+USE_MOCK = False  # passer à False une fois les checkpoints vérifiés en place
 
-N_CLASSES = 200  # CUB-200-2011
+N_CLASSES = 200
+IMAGE_SIZE = 224
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+
+# Checkpoint ViT retenu pour la démo : patch32 pré-entraîné (meilleur run
+# enregistré par B - top1 53.85%, top5 83.50%, voir src/register_mlflow.py)
+VIT_PATCH_SIZE = 32
+VIT_CHECKPOINT = os.path.join(_REPO_ROOT, "results", "runs", "vit_pretrained_patch32_best.pth")
+RESNET_CHECKPOINT = os.path.join(_REPO_ROOT, "results", "runs", "resnet50_best.pth")
 
 
 class MockModel:
-    """Modèle factice : renvoie des prédictions aléatoires mais réalistes.
-
-    Utile pour développer et tester tout le pipeline API + frontend
-    sans dépendre des checkpoints réels de B.
-    """
+    """Modèle factice : prédictions aléatoires mais réalistes."""
 
     def __init__(self, name: str):
         self.name = name
+        self.raw_model = None
 
     def predict(self, image_bytes: bytes):
-        """Simule une prédiction : classe + confiance + top-3."""
         classes = random.sample(range(N_CLASSES), 3)
         confidences = sorted([random.uniform(0.4, 0.95) for _ in range(3)], reverse=True)
         return {
@@ -51,31 +55,73 @@ class MockModel:
         }
 
 
-def load_models():
-    """Charge (ou mocke) les modèles ViT et ResNet-50."""
-    if USE_MOCK:
+class TorchModelWrapper:
+    """Adapte un modèle PyTorch (ViTPretrained ou ResNet50 de B) à
+    l'interface .predict() attendue par routers/predict.py.
+
+    Expose .raw_model, utilisé par utils/attention.py pour un futur
+    hook d'attention sur le ViT.
+    """
+
+    def __init__(self, torch_model):
+        import torch
+        self.raw_model = torch_model
+        self.raw_model.eval()
+        self._torch = torch
+
+    def _build_transform(self):
+        import torchvision.transforms as T
+        return T.Compose([
+            T.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            T.ToTensor(),
+            T.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+        ])
+
+    def predict(self, image_bytes: bytes):
+        import io
+        from PIL import Image
+
+        transform = self._build_transform()
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        tensor = transform(img).unsqueeze(0)
+
+        with self._torch.no_grad():
+            logits = self.raw_model(tensor)
+            probs = self._torch.softmax(logits, dim=1)[0]
+            top3_conf, top3_idx = probs.topk(3)
+
         return {
-            "vit": MockModel("vit"),
-            "resnet": MockModel("resnet"),
+            "predicted_class": int(top3_idx[0]),
+            "confidence": round(float(top3_conf[0]), 4),
+            "top3": [
+                {"class_id": int(i), "confidence": round(float(c), 4)}
+                for i, c in zip(top3_idx.tolist(), top3_conf.tolist())
+            ],
         }
 
-    # --- Chargement réel, à activer une fois les checkpoints de B disponibles ---
-    # import torch
-    # import timm
-    # import torchvision.models as tv_models
-    #
-    # vit = timm.create_model("vit_small_patch16_224", pretrained=False, num_classes=N_CLASSES)
-    # vit.load_state_dict(torch.load(MODEL_PATHS["vit"], map_location="cpu"))
-    # vit.eval()
-    #
-    # resnet = tv_models.resnet50(weights=None)
-    # resnet.fc = torch.nn.Linear(resnet.fc.in_features, N_CLASSES)
-    # resnet.load_state_dict(torch.load(MODEL_PATHS["resnet"], map_location="cpu"))
-    # resnet.eval()
-    #
-    # return {"vit": vit, "resnet": resnet}
 
-    raise NotImplementedError(
-        "USE_MOCK=False mais le chargement réel n'est pas encore implémenté. "
-        "Décommenter le bloc ci-dessus une fois les checkpoints de B disponibles."
-    )
+def _load_vit():
+    import torch
+    from src.models.vit_pretrained import ViTPretrained
+
+    model = ViTPretrained(num_classes=N_CLASSES, pretrained=False, patch_size=VIT_PATCH_SIZE)
+    state_dict = torch.load(VIT_CHECKPOINT, map_location="cpu")
+    model.load_state_dict(state_dict)
+    return TorchModelWrapper(model)
+
+
+def _load_resnet():
+    import torch
+    from src.models.resnet50 import ResNet50
+
+    model = ResNet50(num_classes=N_CLASSES, pretrained=False)
+    state_dict = torch.load(RESNET_CHECKPOINT, map_location="cpu")
+    model.load_state_dict(state_dict)
+    return TorchModelWrapper(model)
+
+
+def load_models():
+    if USE_MOCK:
+        return {"vit": MockModel("vit"), "resnet": MockModel("resnet")}
+
+    return {"vit": _load_vit(), "resnet": _load_resnet()}
