@@ -48,7 +48,8 @@ model.eval()
 # CONFIGURATION MLflow
 # ============================================================
 
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
+# mlflow.set_tracking_uri("sqlite:///mlflow.db")
+mlflow.set_tracking_uri("sqlite:////content/drive/MyDrive/Projet_annuel/mlflow.db")
 
 mlflow.set_experiment(EXPERIMENT_NAME)
 
