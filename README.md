@@ -1,53 +1,100 @@
 # ViT vs CNN — Classification fine-grained
 
-Projet M1 IA — comparaison Vision Transformer vs CNN sur une tâche de classification fine-grained, avec étude d'ablation (taille de patch, pré-entraînement).
+Projet M1 IA — comparaison Vision Transformer vs CNN sur une tâche de classification fine-grained (CUB-200-2011), avec étude d'ablation (taille de patch, pré-entraînement, quantité de données) et application de démonstration.
 
 ## Équipe
-- A — Data / Experiment Engineer : [SONHOUIN Abdoul-raouf]
+- A — Data / Experiment Engineer : SONHOUIN Abdoul-raouf
 - B — Model / Research Engineer : [Nom]
 - C — Reporting / Backend Developer : [Nom]
 
 ## Structure du repo
 
-/data # dataset (non versionné)
-
-/notebooks # notebooks d'exploration
-
-/src/data # preprocessing, dataset PyTorch, splits
-
-/src/models # architectures ViT/ResNet 
-
-/src/train # boucle d'entraînement
-
-/src/eval # analyse des résultats, attention maps
-
-/app/backend # API FastAPI
-
+/data/data_processed # métadonnées et splits générés (dataset brut non versionné)
+/notebooks # notebooks d'exploration et d'entraînement
+/src/data # preprocessing, dataset PyTorch, splits, transforms
+/src/models # architectures ViT (scratch/pré-entraîné) et ResNet-50
+/src/train # boucle d'entraînement (scheduler, AMP, early stopping)
+/src/evaluate_all_checkpoints.py # réévaluation de tous les checkpoints
+/src/register_all_to_mlflow.py # enregistrement MLflow
+/app/backend # API FastAPI (prédictions, attention, classes)
 /app/frontend # app Next.js de démo
-
 /report # rapport LaTeX
-
-/results # tableaux, figures, logs de runs
+/results # checkpoints, métriques, figures
 
 
 ## Protocole
 - Seed : 42
 - Résolution : 224×224
-- Métriques : accuracy top-1, F1 macro
+- Métriques : accuracy top-1, top-5
 
-## Installation
+## Pipeline data (rôle A)
 
-### App de démo — ViT vs CNN (CUB-200-2011)
+Les fichiers déjà générés sont dans `data/data_processed/` :
+- `metadata.csv` : toutes les images + classes + split officiel CUB
+- `split_train.csv`, `split_val.csv`, `split_test.csv` : indices (image_id) du split train/val/test (seed=42)
+- `split_train_{10,25,50,100}pct.csv` : sous-échantillons stratifiés pour la courbe data-hungry
+- `figures/` : EDA (distribution des classes, résolutions, exemples de classes proches)
 
-État actuel : **backend et frontend fonctionnels avec des modèles factices
-(mock)**. Les vraies prédictions/heatmaps seront branchées dès que le rôle B
-livre des checkpoints entraînés (voir `backend/models/loader.py` et
-`backend/utils/attention.py`).
+### Réutiliser le pipeline data dans un notebook
 
-#### Backend (FastAPI)
+```python
+import os
+os.environ['CUB_DATA_ROOT'] = '<TON_CHEMIN>/CUB_200_2011/CUB_200_2011'
+os.environ['CUB_OUT_DIR'] = '<TON_CHEMIN>/data_processed'
+
+from src.data.transforms import get_val_transform, get_train_transform
+from src.data.dataset import CUBDataset
+import pandas as pd
+
+metadata = pd.read_csv('data/data_processed/metadata.csv')
+train_ids = pd.read_csv('data/data_processed/split_train.csv')
+train_df = metadata[metadata['image_id'].isin(train_ids['image_id'])]
+
+train_ds = CUBDataset(train_df, transform=get_train_transform('weak'))
+```
+
+**Important** : `metadata.csv` contient des chemins d'image locaux à la machine qui l'a généré — reconstruis `image_path` avec ton propre `CUB_DATA_ROOT` si besoin :
+```python
+metadata['image_path'] = metadata['image_name'].apply(lambda x: f"{os.environ['CUB_DATA_ROOT']}/images/{x}")
+```
+
+## Entraînement et évaluation (rôle B)
+
+Les scripts d'entraînement sont dans `src/train/` (un par architecture/variante). Les checkpoints entraînés sont versionnés dans `results/runs/*.pth`.
+
+Pour réévaluer tous les checkpoints sur le test set et régénérer les résultats finaux :
+```bash
+python src/evaluate_all_checkpoints.py
+```
+Ça produit `results/final_results.csv` avec top-1, top-5, loss et nombre de paramètres pour chaque configuration.
+
+## Suivi des expériences (MLflow)
+
+La base `mlflow.db` est locale (exclue du dépôt via `.gitignore`) — chacun la régénère chez soi :
 
 ```bash
-cd backend
+# 1. Réévalue tous les checkpoints présents dans results/runs/ sur le test set
+python src/evaluate_all_checkpoints.py
+
+# 2. Enregistre les résultats et les 3 meilleurs modèles dans MLflow
+python src/register_all_to_mlflow.py
+
+# 3. Visualiser les runs
+mlflow ui
+```
+
+Ouvrir ensuite `http://127.0.0.1:5000`. L'expérience `CUB-200-2011_ablation` contient les 12 configurations comparées dans le rapport, avec leurs hyperparamètres, métriques (top-1, top-5, loss) et — pour les 3 meilleurs modèles (ResNet-50, ViT pré-entraîné patch32, ViT from scratch) — le modèle PyTorch complet packagé.
+
+Nécessite `pip install mlflow torch torchvision timm pandas` (déjà couvert par `requirements.txt`).
+
+## App de démo — ViT vs CNN
+
+L'application est fonctionnelle avec les vrais modèles entraînés (checkpoints dans `results/runs/`).
+
+### Backend (FastAPI)
+
+```bash
+cd app/backend
 python -m venv venv
 source venv/bin/activate  # Windows : venv\Scripts\activate
 pip install -r requirements.txt
@@ -57,71 +104,30 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 Documentation interactive : http://localhost:8000/docs
 
 Endpoints :
-- `GET /health` — vérifie que l'API tourne
-- `POST /predict` — reçoit une image, renvoie les prédictions ViT + ResNet
-- `POST /attention` — reçoit une image, renvoie la heatmap d'attention (base64)
+- `GET /health` — vérifie que l'API tourne et que les modèles sont chargés
+- `GET /classes` — renvoie le mapping `{index: nom_espèce}` (200 espèces CUB)
+- `POST /predict` — reçoit une image, renvoie les prédictions ViT + ResNet (classe, confiance, top-3)
+- `POST /attention` — reçoit une image, renvoie la carte d'attention réelle du ViT superposée (base64)
 
-#### Frontend (Next.js)
+### Frontend (Next.js)
 
 ```bash
-cd frontend
+cd app/frontend
 npm install
 npm run dev
 ```
 
 Ouvrir http://localhost:3000
 
-Par défaut le frontend appelle `http://localhost:8000` pour l'API. Pour
-changer l'URL (ex. déploiement), définir la variable d'environnement
-`NEXT_PUBLIC_API_URL`.
+Par défaut le frontend appelle `http://localhost:8000`. Pour changer l'URL (ex. déploiement), définir la variable d'environnement `NEXT_PUBLIC_API_URL`.
 
-#### Brancher les vrais modèles (une fois B a livré)
+### Tests
 
-1. Placer les checkpoints (`.pth`) dans `backend/checkpoints/`
-2. Dans `backend/models/loader.py` :
-   - Mettre à jour `MODEL_PATHS`
-   - Passer `USE_MOCK = False`
-   - Décommenter le bloc de chargement réel (imports `torch`, `timm`,
-     `torchvision`)
-3. Dans `backend/utils/attention.py`, remplacer l'appel au mock par la
-   vraie fonction de hook d'attention fournie par B
-4. Ajouter `torch`, `torchvision`, `timm` à `requirements.txt`
-
-#### Déploiement (optionnel)
-
-Piste : Hugging Face Spaces (Docker ou Gradio/Streamlit wrapper autour de
-l'API FastAPI). À documenter ici une fois réalisé.
-=======
-(à compléter — instructions backend/frontend)
-
-
-## Pipeline data (rôle A)
-
-Les fichiers déjà générés sont dans `data/processed/` :
-- `metadata.csv` : toutes les images + classes + split officiel CUB
-- `split_train.csv`, `split_val.csv`, `split_test.csv` : indices (image_id) du split train/val/test (seed=42)
-- `split_train_{10,25,50,100}pct.csv` : sous-échantillons stratifiés pour la courbe data-hungry
-
-### Pour réutiliser dans ton notebook (rôle B)
-
-```python
-import os
-os.environ['CUB_DATA_ROOT'] = '<TON_CHEMIN_DRIVE>/CUB_200_2011'  # adapte à ton Drive
-os.environ['CUB_OUT_DIR'] = '<TON_CHEMIN_DRIVE>/data_processed'
-
-from src.data.transforms import get_val_transform, get_train_transform
-from src.data.dataset import CUBDataset
-import pandas as pd
-
-metadata = pd.read_csv('data/processed/metadata.csv')
-train_ids = pd.read_csv('data/processed/split_train.csv')
-train_df = metadata[metadata['image_id'].isin(train_ids['image_id'])]
-
-train_ds = CUBDataset(train_df, transform=get_train_transform('weak'))
+```bash
+cd app/backend
+pytest tests/ -v
 ```
 
-**Important** : `metadata.csv` contient des chemins d'image pointant vers le Drive de A — remplace `image_path` en le reconstruisant depuis ta propre copie du dataset si besoin :
-```python
-metadata['image_path'] = metadata['image_name'].apply(lambda x: f"{os.environ['CUB_DATA_ROOT']}/images/{x}")
-```
+### Déploiement (optionnel)
 
+Piste : Hugging Face Spaces (Docker ou wrapper Gradio/Streamlit autour de l'API FastAPI). Un `Dockerfile` est déjà présent dans `app/backend/`.
