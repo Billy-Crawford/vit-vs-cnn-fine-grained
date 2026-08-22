@@ -1,15 +1,62 @@
 \section{Discussion et limites}
 \label{sec:discussion}
 
-% Section partagée A + B (+ C si besoin) — à compléter une fois les
-% résultats disponibles.
-%
-% Points à couvrir :
-% - Interprétation des résultats (ViT vs ResNet, effet de la quantité de
-%   données, effet de l'augmentation).
-% - Limites : taille du dataset, temps de calcul limité (2 semaines),
-%   ViT from-scratch potentiellement sous-entraîné, échelle réduite du
-%   modèle par rapport au ViT-Base original.
-% - Pistes d'amélioration si plus de temps/ressources.
+\subsection{Synthèse des résultats}
 
-TODO: en attente des résultats de A et B.
+Les résultats de ce projet confirment, sur une tâche de classification
+fine-grained à petite échelle, le comportement data-hungry du ViT
+documenté dans la littérature~\cite{dosovitskiy2020vit,touvron2021deit} :
+sans pré-entraînement à grande échelle, le ViT n'apprend pas de
+représentation exploitable dans les conditions expérimentales de ce
+projet, quelle que soit la quantité de données d'entraînement fournie.
+À l'inverse, ResNet-50 exploite efficacement son biais inductif
+convolutif pour apprendre une représentation utile même avec 10\,\% du
+jeu d'entraînement, et atteint 71{,}9\,\% de top-1 avec le jeu complet.
+Le ViT pré-entraîné, quant à lui, confirme l'intérêt du pré-entraînement
+à grande échelle : sa variante patch32 atteint 53{,}9\,\% de top-1,
+là où le ViT from scratch reste bloqué au niveau du hasard.
+
+L'application de démonstration développée pour ce projet illustre ce
+contraste de manière concrète : sur une image test correctement
+identifiée, ViT et ResNet-50 s'accordent avec des niveaux de confiance
+cohérents ; sur une image hors distribution (espèce absente de
+CUB-200-2011), les deux modèles produisent des confiances faibles et
+sont en désaccord, un comportement souhaitable plutôt qu'une erreur
+silencieuse (Section~\ref{sec:deployment}).
+
+\subsection{Limites}
+
+\textbf{Nombre d'epochs restreint.} Les modèles ont été entraînés sur
+seulement 3 epochs (Section~\ref{sec:methodology}), une contrainte de
+temps de calcul disponible sur la durée du projet. Cette limite affecte
+en premier lieu le ViT from scratch, dont l'absence totale
+d'apprentissage (accuracy proche du hasard indépendamment de la
+quantité de données) est probablement davantage due à un
+sous-entraînement qu'à une limite intrinsèque de l'architecture. Un
+entraînement plus long, combiné à un scheduler de taux d'apprentissage
+et à un arrêt anticipé (tous deux implémentés dans l'outil
+d'entraînement du projet mais non encore appliqués aux résultats
+rapportés), constituerait la première piste d'amélioration.
+
+\textbf{Écart inexpliqué entre les variantes patch16 et patch32 du ViT
+pré-entraîné.} La variante patch16 (9{,}9\,\% de top-1) performe
+nettement moins bien que la variante patch32 (53{,}9\,\%), un résultat
+contre-intuitif qui n'a pas pu être expliqué dans le temps imparti et
+mériterait une investigation plus poussée (vérification du taux
+d'apprentissage, du nombre d'itérations, ou d'un éventuel problème de
+convergence spécifique à cette configuration).
+
+\textbf{Échelle réduite du ViT from scratch.} L'implémentation
+personnalisée du ViT (6 blocs, dimension d'embedding 384) reste
+nettement plus petite que le ViT-Base original~\cite{dosovitskiy2020vit},
+ce qui limite la portée des comparaisons avec les résultats publiés
+dans la littérature.
+
+\textbf{Absence de variance statistique.} Chaque configuration n'a été
+entraînée qu'une seule fois (un seul seed), sans répétition pour
+estimer la variance des résultats d'un run à l'autre.
+
+\textbf{Taille du jeu de données.} Avec 5\,094 images d'entraînement,
+CUB-200-2011 reste un jeu de données modeste au regard des standards
+de pré-entraînement des Vision Transformers, ce qui limite la capacité
+du ViT from scratch à démontrer son potentiel dans ce cadre expérimental.

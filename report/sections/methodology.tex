@@ -1,12 +1,54 @@
 \section{Méthode}
 \label{sec:methodology}
 
-% Rôle B — section à recevoir de B (~1.5-2 pages)
-% Contenu attendu : architectures (ViT from-scratch + pré-entraîné, ResNet-50),
-% hyperparamètres, protocole expérimental (optimiseur, scheduler, mixed
-% precision, early stopping).
-%
-% C : remplacer ce placeholder par le contenu final de B dès réception,
-% et vérifier la numérotation/les références des figures et tableaux.
+\subsection{Architectures}
 
-TODO: en attente du contenu de B.
+Trois architectures sont comparées, toutes adaptées à la classification
+sur les 200 classes de CUB-200-2011 :
+
+\begin{itemize}
+  \item \textbf{ResNet-50 pré-entraîné} : backbone \texttt{torchvision}
+    pré-entraîné sur ImageNet, dont la dernière couche entièrement
+    connectée est remplacée par une couche linéaire à 200 sorties.
+  \item \textbf{ViT pré-entraîné} : backbone \texttt{timm}
+    (\texttt{vit\_small\_patch16\_224} ou \texttt{vit\_small\_patch32\_224}
+    selon la taille de patch), pré-entraîné sur ImageNet, avec une tête
+    de classification à 200 sorties.
+  \item \textbf{ViT from scratch} : implémentation entièrement codée pour
+    ce projet, sans pré-entraînement. L'image est découpée en patches
+    (16 ou 32 pixels) projetés linéairement (\emph{patch embedding}), un
+    token \texttt{[CLS]} est ajouté à la séquence, un encodage
+    positionnel appris est additionné, puis la séquence traverse 6
+    blocs Transformer (dimension d'embedding 384, 6 têtes d'attention,
+    ratio MLP de 4). La classification finale s'appuie sur le token
+    \texttt{[CLS]} après normalisation.
+\end{itemize}
+
+\subsection{Protocole d'entraînement}
+
+Chaque modèle est entraîné avec l'optimiseur AdamW (taux d'apprentissage
+$10^{-4}$, weight decay $0{,}01$), une fonction de perte d'entropie
+croisée, une taille de batch de 32, sur 3 epochs. Les images sont
+prétraitées et augmentées selon les pipelines décrits en
+Section~\ref{sec:data} (redimensionnement à 224$\times$224,
+normalisation ImageNet, augmentation faible par défaut). Les
+variantes ResNet-50 et ViT from scratch sont également entraînées sur
+les sous-ensembles à 10\,\%, 25\,\% et 50\,\% du jeu d'entraînement
+complet, dans les mêmes conditions, pour l'analyse de sensibilité à la
+quantité de données (Section~\ref{sec:ablation}).
+
+Le meilleur modèle de chaque run est sélectionné selon l'accuracy de
+validation et sauvegardé automatiquement à chaque amélioration.
+
+\subsection{Limite du protocole actuel}
+
+Le nombre d'epochs (3) a été fixé pour des raisons de temps de calcul
+disponible sur la durée du projet. Cette contrainte affecte
+particulièrement le ViT from scratch, qui ne bénéficie d'aucun
+pré-entraînement et nécessite un nombre d'itérations nettement plus
+élevé pour converger, en cohérence avec son comportement data-hungry
+documenté en Section~\ref{sec:related_work}. Un scheduler de taux
+d'apprentissage, l'entraînement en précision mixte et un mécanisme
+d'arrêt anticipé ont été implémentés dans l'outil d'entraînement du
+projet mais n'ont pas encore été appliqués aux résultats rapportés
+ici ; cette limite est reprise en Section~\ref{sec:discussion}.

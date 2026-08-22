@@ -23,9 +23,26 @@
   \begin{@twocolumnfalse}
     \maketitle
     \begin{abstract}
-    % Résumé à rédiger en dernier, une fois les résultats disponibles (~150-200 mots).
-    % Doit couvrir : problème traité, méthode, résultats principaux, conclusion.
-    TODO: résumé.
+    Ce rapport présente une étude comparative entre Vision Transformers
+    (ViT) et réseaux convolutifs (CNN) sur une tâche de classification
+    fine-grained : la reconnaissance de 200 espèces d'oiseaux à partir du
+    jeu de données CUB-200-2011. Trois configurations sont comparées : un
+    ViT entraîné from scratch, un ViT pré-entraîné sur ImageNet, et un
+    ResNet-50 pré-entraîné, avec une attention particulière portée à la
+    sensibilité de chaque architecture à la quantité de données
+    d'entraînement disponible. Les résultats confirment le comportement
+    data-hungry du ViT : sans pré-entraînement à grande échelle, il
+    n'apprend pas de représentation exploitable (1{,}1\,\% d'accuracy
+    top-1, proche du hasard) quelle que soit la fraction du jeu
+    d'entraînement utilisée, tandis que ResNet-50 progresse de façon
+    régulière avec la quantité de données (5{,}1\,\% à 71{,}9\,\% entre
+    10\,\% et 100\,\% des données). Le ViT pré-entraîné atteint quant à lui
+    53{,}9\,\% de top-1, confirmant l'intérêt du pré-entraînement à grande
+    échelle pour cette architecture. Une application de démonstration,
+    exposant les deux modèles via une API et une interface web avec
+    visualisation de la carte d'attention du ViT, illustre concrètement ce
+    contraste. Les limites de l'étude, notamment un nombre d'epochs
+    restreint par les contraintes de temps du projet, sont discutées.
     \end{abstract}
     \vspace{1em}
   \end{@twocolumnfalse}

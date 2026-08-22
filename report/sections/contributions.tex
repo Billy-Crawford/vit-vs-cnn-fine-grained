@@ -1,15 +1,51 @@
 \section{Répartition du travail}
 \label{sec:contributions}
 
-% Rôle C — à rédiger en toute fin de projet (Jour 13-14), une fois les
-% contributions réelles de chacun connues.
-%
-% Format attendu : nom + rôle + contributions précises (pas juste
-% "A a fait la partie données" mais le détail concret : quels scripts,
-% quelles sections du rapport, quelles décisions techniques).
+\subsection{Rôle A — Data / Experiment Engineer}
 
-\begin{itemize}
-  \item \textbf{Prénom Nom A} (Data / Experiment Engineer) : TODO — détailler.
-  \item \textbf{Prénom Nom B} (Model / Research Engineer) : TODO — détailler.
-  \item \textbf{Prénom Nom C} (Reporting / Backend Developer) : TODO — détailler.
-\end{itemize}
+Préparation complète du pipeline de données : téléchargement et
+vérification d'intégrité du jeu de données CUB-200-2011, analyse
+exploratoire (distribution des classes, résolution des images,
+illustration de la difficulté fine-grained), prétraitement
+(redimensionnement, normalisation ImageNet), split train/validation/test
+stratifié et reproductible (seed fixe), génération des quatre
+sous-échantillons pour la courbe data-hungry (10\,\%, 25\,\%, 50\,\%,
+100\,\%), définition des deux pipelines d'augmentation (faible et
+forte), et implémentation des classes \texttt{Dataset}/\texttt{DataLoader}
+PyTorch partagées avec le reste de l'équipe. Rédaction de la
+Section~\ref{sec:data} (Données).
+
+\subsection{Rôle B — Model / Research Engineer}
+
+Implémentation des trois architectures comparées : ViT from scratch
+(patch embedding, token \texttt{[CLS]}, encodage positionnel, blocs
+Transformer), intégration des modèles pré-entraînés (ViT via
+\texttt{timm}, ResNet-50 via \texttt{torchvision}), et mise en place de
+la boucle d'entraînement commune. Entraînement des 12 configurations
+comparées dans ce rapport (Section~\ref{sec:ablation}), packaging d'un
+modèle via MLflow.
+
+\subsection{Rôle C — Reporting / Backend Developer}
+
+Développement de l'application de démonstration complète : backend
+FastAPI (endpoints \texttt{/predict}, \texttt{/attention},
+\texttt{/classes}), frontend Next.js (upload, affichage comparatif,
+indicateur d'accord/désaccord, superposition de la carte d'attention),
+et implémentation du hook d'extraction de la carte d'attention réelle du
+ViT. Amélioration de l'outil d'entraînement (ajout du scheduler, de la
+précision mixte et de l'arrêt anticipé) et du pipeline d'évaluation
+(script consolidant les résultats de l'ensemble des checkpoints
+entraînés, utilisé pour produire le Tableau~\ref{tab:ablation} et la
+Figure~\ref{fig:data_hungry}). Pilotage de la structure LaTeX du
+rapport et rédaction des Sections~\ref{sec:introduction}
+(Introduction), \ref{sec:related_work} (Travaux liés),
+\ref{sec:ablation} (Étude d'ablation), \ref{sec:deployment}
+(Déploiement), \ref{sec:discussion} (Discussion et limites) et de la
+présente section.
+
+\subsection{Travail collectif}
+
+La Section~\ref{sec:methodology} (Méthode) et la
+Section~\ref{sec:discussion} (Discussion et limites) s'appuient sur les
+contributions conjointes des rôles A, B et C. Relecture croisée du
+rapport complet par l'ensemble de l'équipe avant la remise finale.
