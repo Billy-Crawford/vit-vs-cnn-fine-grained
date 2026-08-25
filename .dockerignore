@@ -1,0 +1,41 @@
+# --- Git / OS ---
+.git
+.gitignore
+.gitattributes
+.vscode
+.DS_Store
+
+# --- Python ---
+__pycache__/
+*.py[codz]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+env/
+.venv/
+
+# --- Node / Frontend ---
+node_modules/
+.next/
+npm-debug.log*
+
+# --- LaTeX build ---
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.bbl
+report/*.blg
+
+# --- MLflow / BDD locales ---
+mlruns/
+mlflow.db
+*.db
+
+# --- Volume du projet (données brutes, ne pas embarquer) ---
+# On garde uniquement les fichiers traités nécessaires au runtime
+data/raw/
+data/CUB_200_2011/

@@ -1,0 +1,19 @@
+# --- Node ---
+node_modules/
+.next/
+npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Git / OS ---
+.git
+.gitignore
+.DS_Store
+.gitkeep
+
+# --- Éditeurs ---
+.vscode/
+.idea/
+
+# --- Logs ---
+*.log
