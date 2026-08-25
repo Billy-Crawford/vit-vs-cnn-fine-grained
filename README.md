@@ -91,7 +91,50 @@ Nécessite `pip install mlflow torch torchvision timm pandas` (déjà couvert pa
 
 L'application est fonctionnelle avec les vrais modèles entraînés (checkpoints dans `results/runs/`).
 
-### Backend (FastAPI)
+### 🚀 Lancement rapide avec Docker (Recommandé — Multi-plateforme)
+
+Pour garantir que l'application tourne à l'identique sur toutes les machines (Windows, macOS, Linux) sans conflits d'environnement :
+
+```bash
+# 1. Copier le fichier de configuration (si ce n'est pas déjà fait)
+cp .env.example .env
+
+# 2. Construire et démarrer les conteneurs
+docker compose up --build -d
+```
+
+Ou sous Windows : double-cliquer simplement sur `docker-start.bat`.
+
+- **Frontend Démo (Next.js)** : [http://localhost:3000](http://localhost:3000)
+- **Backend API (FastAPI Docs)** : [http://localhost:8000/docs](http://localhost:8000/docs)
+- **MLflow UI (Optionnel)** : `docker compose --profile mlflow up -d` puis ouvrir [http://localhost:5000](http://localhost:5000)
+
+**Commandes utiles Docker :**
+```bash
+# Voir les logs en direct de tous les conteneurs
+docker compose logs -f
+
+# Voir les logs du backend uniquement
+docker compose logs -f backend
+
+# Voir les logs du frontend uniquement
+docker compose logs -f frontend
+
+# Arrêter l'application
+docker compose down
+
+# Redémarrer l'application (sans rebuild)
+docker compose up -d
+
+# Lancer avec l'interface MLflow en plus (port 5000)
+docker compose --profile mlflow up -d
+```
+
+---
+
+### Lancement en local (sans Docker)
+
+#### Backend (FastAPI)
 
 ```bash
 cd app/backend
@@ -109,7 +152,7 @@ Endpoints :
 - `POST /predict` — reçoit une image, renvoie les prédictions ViT + ResNet (classe, confiance, top-3)
 - `POST /attention` — reçoit une image, renvoie la carte d'attention réelle du ViT superposée (base64)
 
-### Frontend (Next.js)
+#### Frontend (Next.js)
 
 ```bash
 cd app/frontend
@@ -119,7 +162,7 @@ npm run dev
 
 Ouvrir http://localhost:3000
 
-Par défaut le frontend appelle `http://localhost:8000`. Pour changer l'URL (ex. déploiement), définir la variable d'environnement `NEXT_PUBLIC_API_URL`.
+Par défaut le frontend appelle `http://localhost:8000`. Pour changer l'URL (ex. déploiement distant), définir la variable d'environnement `NEXT_PUBLIC_API_URL`.
 
 ### Tests
 
@@ -128,6 +171,7 @@ cd app/backend
 pytest tests/ -v
 ```
 
-### Déploiement (optionnel)
+### Déploiement
 
-Piste : Hugging Face Spaces (Docker ou wrapper Gradio/Streamlit autour de l'API FastAPI). Un `Dockerfile` est déjà présent dans `app/backend/`.
+Le projet est entièrement conteneurisé via les Dockerfiles multi-stage (`Dockerfile` pour le backend PyTorch/FastAPI et `app/frontend/Dockerfile` pour le frontend Next.js standalone).
+Il peut être déployé directement sur n'importe quel serveur ou service cloud supportant Docker (VPS, Hugging Face Spaces, Render, AWS ECS, GCP Cloud Run, Azure App Service).
