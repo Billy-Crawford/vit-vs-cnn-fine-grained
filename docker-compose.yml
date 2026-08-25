@@ -1,0 +1,82 @@
+services:
+
+  # ------------------------------------------------------------
+  # Backend API (FastAPI + Inf├®rence PyTorch ViT / ResNet)
+  # ------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vit-cnn-backend
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      - USE_MOCK=${USE_MOCK:-false}
+      - PYTHONUNBUFFERED=1
+      - CUB_DATA_ROOT=/app/data/CUB_200_2011/CUB_200_2011
+      - CUB_OUT_DIR=/app/data/data_processed
+      - CUB_METADATA_CSV=/app/data/data_processed/metadata.csv
+    volumes:
+      # Montage en lecture seule pour pouvoir mettre ├á jour les checkpoints sans rebuild
+      - ./data/data_processed:/app/data/data_processed:ro
+      - ./results/runs:/app/results/runs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    restart: unless-stopped
+    networks:
+      - vit-cnn-net
+
+  # ------------------------------------------------------------
+  # Frontend D├®mo (Next.js 14 Standalone)
+  # ------------------------------------------------------------
+  frontend:
+    build:
+      context: ./app/frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: vit-cnn-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - vit-cnn-net
+
+  # ------------------------------------------------------------
+  # MLflow UI (Visualisation des exp├®riences et m├®triques)
+  # Activable via: docker compose --profile mlflow up
+  # ------------------------------------------------------------
+  mlflow:
+    profiles:
+      - mlflow
+      - all
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vit-cnn-mlflow
+    command: ["mlflow", "ui", "--backend-store-uri", "sqlite:////app/mlflow.db", "--artifacts-destination", "/app/mlruns", "--host", "0.0.0.0", "--port", "5000"]
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlruns:/app/mlruns
+    restart: unless-stopped
+    networks:
+      - vit-cnn-net
+
+networks:
+  vit-cnn-net:
+    driver: bridge

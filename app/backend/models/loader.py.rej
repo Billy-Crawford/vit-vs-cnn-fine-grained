@@ -1,0 +1,10 @@
+diff a/app/backend/models/loader.py b/app/backend/models/loader.py	(rejected hunks)
+@@ -21,7 +21,7 @@ _REPO_ROOT = os.path.abspath(
+ )
+ sys.path.insert(0, _REPO_ROOT)
+ 
+-USE_MOCK = False  # passer ├á False une fois les checkpoints v├®rifi├®s en place
++USE_MOCK = os.environ.get("USE_MOCK", "true").lower() != "false"
+ 
+ N_CLASSES = 200
+ IMAGE_SIZE = 224

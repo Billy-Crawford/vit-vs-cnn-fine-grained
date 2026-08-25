@@ -1,0 +1,891 @@
+diff --git a/.dockerignore b/.dockerignore
+new file mode 100644
+index 0000000..2b5c179
+--- /dev/null
++++ b/.dockerignore
+@@ -0,0 +1,41 @@
++# --- Git / OS ---
++.git
++.gitignore
++.gitattributes
++.vscode
++.DS_Store
++
++# --- Python ---
++__pycache__/
++*.py[codz]
++*$py.class
++*.egg-info/
++.pytest_cache/
++.mypy_cache/
++.ruff_cache/
++venv/
++env/
++.venv/
++
++# --- Node / Frontend ---
++node_modules/
++.next/
++npm-debug.log*
++
++# --- LaTeX build ---
++report/*.aux
++report/*.log
++report/*.out
++report/*.toc
++report/*.bbl
++report/*.blg
++
++# --- MLflow / BDD locales ---
++mlruns/
++mlflow.db
++*.db
++
++# --- Volume du projet (donn├®es brutes, ne pas embarquer) ---
++# On garde uniquement les fichiers trait├®s n├®cessaires au runtime
++data/raw/
++data/CUB_200_2011/
+\ No newline at end of file
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..34a2c9d
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,16 @@
++# ============================================================
++# ViT vs CNN ÔÇö Variables d'Environnement Docker
++# ============================================================
++
++# Mode d'inf├®rence backend :
++# - false : charge les vrais mod├¿les PyTorch depuis results/runs/
++# - true  : utilise des mocks al├®atoires (pratique pour tests l├®gers)
++USE_MOCK=false
++
++# URL de l'API backend accessible par le navigateur client
++NEXT_PUBLIC_API_URL=http://localhost:8000
++
++# Ports expos├®s sur la machine h├┤te
++BACKEND_PORT=8000
++FRONTEND_PORT=3000
++MLFLOW_PORT=5000
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..8db0c69
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,49 @@
++# ============================================================
++# Dockerfile ÔÇö Backend FastAPI (ViT vs CNN Inference)
++# ============================================================
++# Multi-plateforme (Linux/macOS/Windows), optimis├® CPU et s├®curis├®.
++# ============================================================
++
++FROM python:3.11-slim AS base
++
++# Emp├¬che Python d'├®crire des fichiers .pyc et active le flushing imm├®diat des logs
++ENV PYTHONUNBUFFERED=1 \
++    PYTHONDONTWRITEBYTECODE=1 \
++    PYTHONPATH=/app \
++    USE_MOCK=false \
++    CUB_DATA_ROOT=/app/data/CUB_200_2011/CUB_200_2011 \
++    CUB_OUT_DIR=/app/data/data_processed \
++    CUB_METADATA_CSV=/app/data/data_processed/metadata.csv
++
++WORKDIR /app
++
++# Installation de curl pour le healthcheck et les outils minimaux
++RUN apt-get update && apt-get install -y --no-install-recommends \
++    curl \
++    && rm -rf /var/lib/apt/lists/*
++
++# Cr├®ation d'un utilisateur non-root
++RUN useradd -m -u 1000 appuser
++
++# Installation des d├®pendances avec index CPU PyTorch pour un build l├®ger et d├®terministe
++COPY app/backend/requirements.txt requirements.txt
++RUN pip install --no-cache-dir --upgrade pip \
++    && pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
++
++# Copie directe avec assignation des droits non-root (├®vite la duplication de couches lourdes)
++COPY --chown=appuser:appuser src/ src/
++COPY --chown=appuser:appuser app/backend/ app/backend/
++COPY --chown=appuser:appuser data/data_processed/ data/data_processed/
++COPY --chown=appuser:appuser results/runs/ results/runs/
++
++USER appuser
++
++WORKDIR /app/app/backend
++
++EXPOSE 8000
++
++# V├®rification de sant├® int├®gr├®e
++HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
++    CMD curl -f http://localhost:8000/health || exit 1
++
++CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+\ No newline at end of file
+diff --git a/README.md b/README.md
+index 9b4a5ac..daaa66c 100644
+--- a/README.md
++++ b/README.md
+@@ -1,133 +1,177 @@
+-# ViT vs CNN ÔÇö Classification fine-grained
+-
+-Projet M1 IA ÔÇö comparaison Vision Transformer vs CNN sur une t├óche de classification fine-grained (CUB-200-2011), avec ├®tude d'ablation (taille de patch, pr├®-entra├«nement, quantit├® de donn├®es) et application de d├®monstration.
+-
+-## ├ëquipe
+-- A ÔÇö Data / Experiment Engineer : SONHOUIN Abdoul-raouf
+-- B ÔÇö Model / Research Engineer : [Nom]
+-- C ÔÇö Reporting / Backend Developer : [Nom]
+-
+-## Structure du repo
+-
+-/data/data_processed # m├®tadonn├®es et splits g├®n├®r├®s (dataset brut non versionn├®)
+-/notebooks # notebooks d'exploration et d'entra├«nement
+-/src/data # preprocessing, dataset PyTorch, splits, transforms
+-/src/models # architectures ViT (scratch/pr├®-entra├«n├®) et ResNet-50
+-/src/train # boucle d'entra├«nement (scheduler, AMP, early stopping)
+-/src/evaluate_all_checkpoints.py # r├®├®valuation de tous les checkpoints
+-/src/register_all_to_mlflow.py # enregistrement MLflow
+-/app/backend # API FastAPI (pr├®dictions, attention, classes)
+-/app/frontend # app Next.js de d├®mo
+-/report # rapport LaTeX
+-/results # checkpoints, m├®triques, figures
+-
+-
+-## Protocole
+-- Seed : 42
+-- R├®solution : 224├ù224
+-- M├®triques : accuracy top-1, top-5
+-
+-## Pipeline data (r├┤le A)
+-
+-Les fichiers d├®j├á g├®n├®r├®s sont dans `data/data_processed/` :
+-- `metadata.csv` : toutes les images + classes + split officiel CUB
+-- `split_train.csv`, `split_val.csv`, `split_test.csv` : indices (image_id) du split train/val/test (seed=42)
+-- `split_train_{10,25,50,100}pct.csv` : sous-├®chantillons stratifi├®s pour la courbe data-hungry
+-- `figures/` : EDA (distribution des classes, r├®solutions, exemples de classes proches)
+-
+-### R├®utiliser le pipeline data dans un notebook
+-
+-```python
+-import os
+-os.environ['CUB_DATA_ROOT'] = '<TON_CHEMIN>/CUB_200_2011/CUB_200_2011'
+-os.environ['CUB_OUT_DIR'] = '<TON_CHEMIN>/data_processed'
+-
+-from src.data.transforms import get_val_transform, get_train_transform
+-from src.data.dataset import CUBDataset
+-import pandas as pd
+-
+-metadata = pd.read_csv('data/data_processed/metadata.csv')
+-train_ids = pd.read_csv('data/data_processed/split_train.csv')
+-train_df = metadata[metadata['image_id'].isin(train_ids['image_id'])]
+-
+-train_ds = CUBDataset(train_df, transform=get_train_transform('weak'))
+-```
+-
+-**Important** : `metadata.csv` contient des chemins d'image locaux ├á la machine qui l'a g├®n├®r├® ÔÇö reconstruis `image_path` avec ton propre `CUB_DATA_ROOT` si besoin :
+-```python
+-metadata['image_path'] = metadata['image_name'].apply(lambda x: f"{os.environ['CUB_DATA_ROOT']}/images/{x}")
+-```
+-
+-## Entra├«nement et ├®valuation (r├┤le B)
+-
+-Les scripts d'entra├«nement sont dans `src/train/` (un par architecture/variante). Les checkpoints entra├«n├®s sont versionn├®s dans `results/runs/*.pth`.
+-
+-Pour r├®├®valuer tous les checkpoints sur le test set et r├®g├®n├®rer les r├®sultats finaux :
+-```bash
+-python src/evaluate_all_checkpoints.py
+-```
+-├ça produit `results/final_results.csv` avec top-1, top-5, loss et nombre de param├¿tres pour chaque configuration.
+-
+-## Suivi des exp├®riences (MLflow)
+-
+-La base `mlflow.db` est locale (exclue du d├®p├┤t via `.gitignore`) ÔÇö chacun la r├®g├®n├¿re chez soi :
+-
+-```bash
+-# 1. R├®├®value tous les checkpoints pr├®sents dans results/runs/ sur le test set
+-python src/evaluate_all_checkpoints.py
+-
+-# 2. Enregistre les r├®sultats et les 3 meilleurs mod├¿les dans MLflow
+-python src/register_all_to_mlflow.py
+-
+-# 3. Visualiser les runs
+-mlflow ui
+-```
+-
+-Ouvrir ensuite `http://127.0.0.1:5000`. L'exp├®rience `CUB-200-2011_ablation` contient les 12 configurations compar├®es dans le rapport, avec leurs hyperparam├¿tres, m├®triques (top-1, top-5, loss) et ÔÇö pour les 3 meilleurs mod├¿les (ResNet-50, ViT pr├®-entra├«n├® patch32, ViT from scratch) ÔÇö le mod├¿le PyTorch complet packag├®.
+-
+-N├®cessite `pip install mlflow torch torchvision timm pandas` (d├®j├á couvert par `requirements.txt`).
+-
+-## App de d├®mo ÔÇö ViT vs CNN
+-
+-L'application est fonctionnelle avec les vrais mod├¿les entra├«n├®s (checkpoints dans `results/runs/`).
+-
+-### Backend (FastAPI)
+-
+-```bash
+-cd app/backend
+-python -m venv venv
+-source venv/bin/activate  # Windows : venv\Scripts\activate
+-pip install -r requirements.txt
+-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+-```
+-
+-Documentation interactive : http://localhost:8000/docs
+-
+-Endpoints :
+-- `GET /health` ÔÇö v├®rifie que l'API tourne et que les mod├¿les sont charg├®s
+-- `GET /classes` ÔÇö renvoie le mapping `{index: nom_esp├¿ce}` (200 esp├¿ces CUB)
+-- `POST /predict` ÔÇö re├ºoit une image, renvoie les pr├®dictions ViT + ResNet (classe, confiance, top-3)
+-- `POST /attention` ÔÇö re├ºoit une image, renvoie la carte d'attention r├®elle du ViT superpos├®e (base64)
+-
+-### Frontend (Next.js)
+-
+-```bash
+-cd app/frontend
+-npm install
+-npm run dev
+-```
+-
+-Ouvrir http://localhost:3000
+-
+-Par d├®faut le frontend appelle `http://localhost:8000`. Pour changer l'URL (ex. d├®ploiement), d├®finir la variable d'environnement `NEXT_PUBLIC_API_URL`.
+-
+-### Tests
+-
+-```bash
+-cd app/backend
+-pytest tests/ -v
+-```
+-
+-### D├®ploiement (optionnel)
+-
+-Piste : Hugging Face Spaces (Docker ou wrapper Gradio/Streamlit autour de l'API FastAPI). Un `Dockerfile` est d├®j├á pr├®sent dans `app/backend/`.
+\ No newline at end of file
++# ViT vs CNN ÔÇö Classification fine-grained
++
++Projet M1 IA ÔÇö comparaison Vision Transformer vs CNN sur une t├óche de classification fine-grained (CUB-200-2011), avec ├®tude d'ablation (taille de patch, pr├®-entra├«nement, quantit├® de donn├®es) et application de d├®monstration.
++
++## ├ëquipe
++- A ÔÇö Data / Experiment Engineer : SONHOUIN Abdoul-raouf
++- B ÔÇö Model / Research Engineer : [Nom]
++- C ÔÇö Reporting / Backend Developer : [Nom]
++
++## Structure du repo
++
++/data/data_processed # m├®tadonn├®es et splits g├®n├®r├®s (dataset brut non versionn├®)
++/notebooks # notebooks d'exploration et d'entra├«nement
++/src/data # preprocessing, dataset PyTorch, splits, transforms
++/src/models # architectures ViT (scratch/pr├®-entra├«n├®) et ResNet-50
++/src/train # boucle d'entra├«nement (scheduler, AMP, early stopping)
++/src/evaluate_all_checkpoints.py # r├®├®valuation de tous les checkpoints
++/src/register_all_to_mlflow.py # enregistrement MLflow
++/app/backend # API FastAPI (pr├®dictions, attention, classes)
++/app/frontend # app Next.js de d├®mo
++/report # rapport LaTeX
++/results # checkpoints, m├®triques, figures
++
++
++## Protocole
++- Seed : 42
++- R├®solution : 224├ù224
++- M├®triques : accuracy top-1, top-5
++
++## Pipeline data (r├┤le A)
++
++Les fichiers d├®j├á g├®n├®r├®s sont dans `data/data_processed/` :
++- `metadata.csv` : toutes les images + classes + split officiel CUB
++- `split_train.csv`, `split_val.csv`, `split_test.csv` : indices (image_id) du split train/val/test (seed=42)
++- `split_train_{10,25,50,100}pct.csv` : sous-├®chantillons stratifi├®s pour la courbe data-hungry
++- `figures/` : EDA (distribution des classes, r├®solutions, exemples de classes proches)
++
++### R├®utiliser le pipeline data dans un notebook
++
++```python
++import os
++os.environ['CUB_DATA_ROOT'] = '<TON_CHEMIN>/CUB_200_2011/CUB_200_2011'
++os.environ['CUB_OUT_DIR'] = '<TON_CHEMIN>/data_processed'
++
++from src.data.transforms import get_val_transform, get_train_transform
++from src.data.dataset import CUBDataset
++import pandas as pd
++
++metadata = pd.read_csv('data/data_processed/metadata.csv')
++train_ids = pd.read_csv('data/data_processed/split_train.csv')
++train_df = metadata[metadata['image_id'].isin(train_ids['image_id'])]
++
++train_ds = CUBDataset(train_df, transform=get_train_transform('weak'))
++```
++
++**Important** : `metadata.csv` contient des chemins d'image locaux ├á la machine qui l'a g├®n├®r├® ÔÇö reconstruis `image_path` avec ton propre `CUB_DATA_ROOT` si besoin :
++```python
++metadata['image_path'] = metadata['image_name'].apply(lambda x: f"{os.environ['CUB_DATA_ROOT']}/images/{x}")
++```
++
++## Entra├«nement et ├®valuation (r├┤le B)
++
++Les scripts d'entra├«nement sont dans `src/train/` (un par architecture/variante). Les checkpoints entra├«n├®s sont versionn├®s dans `results/runs/*.pth`.
++
++Pour r├®├®valuer tous les checkpoints sur le test set et r├®g├®n├®rer les r├®sultats finaux :
++```bash
++python src/evaluate_all_checkpoints.py
++```
++├ça produit `results/final_results.csv` avec top-1, top-5, loss et nombre de param├¿tres pour chaque configuration.
++
++## Suivi des exp├®riences (MLflow)
++
++La base `mlflow.db` est locale (exclue du d├®p├┤t via `.gitignore`) ÔÇö chacun la r├®g├®n├¿re chez soi :
++
++```bash
++# 1. R├®├®value tous les checkpoints pr├®sents dans results/runs/ sur le test set
++python src/evaluate_all_checkpoints.py
++
++# 2. Enregistre les r├®sultats et les 3 meilleurs mod├¿les dans MLflow
++python src/register_all_to_mlflow.py
++
++# 3. Visualiser les runs
++mlflow ui
++```
++
++Ouvrir ensuite `http://127.0.0.1:5000`. L'exp├®rience `CUB-200-2011_ablation` contient les 12 configurations compar├®es dans le rapport, avec leurs hyperparam├¿tres, m├®triques (top-1, top-5, loss) et ÔÇö pour les 3 meilleurs mod├¿les (ResNet-50, ViT pr├®-entra├«n├® patch32, ViT from scratch) ÔÇö le mod├¿le PyTorch complet packag├®.
++
++N├®cessite `pip install mlflow torch torchvision timm pandas` (d├®j├á couvert par `requirements.txt`).
++
++## App de d├®mo ÔÇö ViT vs CNN
++
++L'application est fonctionnelle avec les vrais mod├¿les entra├«n├®s (checkpoints dans `results/runs/`).
++
++### ­ƒÜÇ Lancement rapide avec Docker (Recommand├® ÔÇö Multi-plateforme)
++
++Pour garantir que l'application tourne ├á l'identique sur toutes les machines (Windows, macOS, Linux) sans conflits d'environnement :
++
++```bash
++# 1. Copier le fichier de configuration (si ce n'est pas d├®j├á fait)
++cp .env.example .env
++
++# 2. Construire et d├®marrer les conteneurs
++docker compose up --build -d
++```
++
++Ou sous Windows : double-cliquer simplement sur `docker-start.bat`.
++
++- **Frontend D├®mo (Next.js)** : [http://localhost:3000](http://localhost:3000)
++- **Backend API (FastAPI Docs)** : [http://localhost:8000/docs](http://localhost:8000/docs)
++- **MLflow UI (Optionnel)** : `docker compose --profile mlflow up -d` puis ouvrir [http://localhost:5000](http://localhost:5000)
++
++**Commandes utiles Docker :**
++```bash
++# Voir les logs en direct de tous les conteneurs
++docker compose logs -f
++
++# Voir les logs du backend uniquement
++docker compose logs -f backend
++
++# Voir les logs du frontend uniquement
++docker compose logs -f frontend
++
++# Arr├¬ter l'application
++docker compose down
++
++# Red├®marrer l'application (sans rebuild)
++docker compose up -d
++
++# Lancer avec l'interface MLflow en plus (port 5000)
++docker compose --profile mlflow up -d
++```
++
++---
++
++### Lancement en local (sans Docker)
++
++#### Backend (FastAPI)
++
++```bash
++cd app/backend
++python -m venv venv
++source venv/bin/activate  # Windows : venv\Scripts\activate
++pip install -r requirements.txt
++uvicorn main:app --reload --host 0.0.0.0 --port 8000
++```
++
++Documentation interactive : http://localhost:8000/docs
++
++Endpoints :
++- `GET /health` ÔÇö v├®rifie que l'API tourne et que les mod├¿les sont charg├®s
++- `GET /classes` ÔÇö renvoie le mapping `{index: nom_esp├¿ce}` (200 esp├¿ces CUB)
++- `POST /predict` ÔÇö re├ºoit une image, renvoie les pr├®dictions ViT + ResNet (classe, confiance, top-3)
++- `POST /attention` ÔÇö re├ºoit une image, renvoie la carte d'attention r├®elle du ViT superpos├®e (base64)
++
++#### Frontend (Next.js)
++
++```bash
++cd app/frontend
++npm install
++npm run dev
++```
++
++Ouvrir http://localhost:3000
++
++Par d├®faut le frontend appelle `http://localhost:8000`. Pour changer l'URL (ex. d├®ploiement distant), d├®finir la variable d'environnement `NEXT_PUBLIC_API_URL`.
++
++### Tests
++
++```bash
++cd app/backend
++pytest tests/ -v
++```
++
++### D├®ploiement
++
++Le projet est enti├¿rement conteneuris├® via les Dockerfiles multi-stage (`Dockerfile` pour le backend PyTorch/FastAPI et `app/frontend/Dockerfile` pour le frontend Next.js standalone).
++Il peut ├¬tre d├®ploy├® directement sur n'importe quel serveur ou service cloud supportant Docker (VPS, Hugging Face Spaces, Render, AWS ECS, GCP Cloud Run, Azure App Service).
+\ No newline at end of file
+diff --git a/app/backend/Dockerfile b/app/backend/Dockerfile
+index 89f7120..fd3c029 100644
+--- a/app/backend/Dockerfile
++++ b/app/backend/Dockerfile
+@@ -1,12 +1,37 @@
++# ============================================================
++# Dockerfile ÔÇö Backend FastAPI (ViT vs CNN)
++# ├Ç utiliser de pr├®f├®rence depuis la racine du d├®p├┤t :
++#   docker build -t vit-cnn-backend -f Dockerfile .
++# ============================================================
++
+ FROM python:3.11-slim
+ 
++ENV PYTHONUNBUFFERED=1 \
++    PYTHONDONTWRITEBYTECODE=1 \
++    PYTHONPATH=/app \
++    USE_MOCK=false
++
+ WORKDIR /app
+ 
++RUN apt-get update && apt-get install -y --no-install-recommends \
++    curl \
++    && rm -rf /var/lib/apt/lists/*
++
++RUN useradd -m -u 1000 appuser
++
+ COPY requirements.txt .
+-RUN pip install --no-cache-dir -r requirements.txt
++RUN pip install --no-cache-dir --upgrade pip \
++    && pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+ 
+ COPY . .
+ 
++RUN chown -R appuser:appuser /app
++
++USER appuser
++
+ EXPOSE 8000
+ 
++HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
++    CMD curl -f http://localhost:8000/health || exit 1
++
+ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+\ No newline at end of file
+diff --git a/app/backend/models/loader.py b/app/backend/models/loader.py
+index 1170b5d..cc00185 100644
+--- a/app/backend/models/loader.py
++++ b/app/backend/models/loader.py
+@@ -21,7 +21,7 @@ _REPO_ROOT = os.path.abspath(
+ )
+ sys.path.insert(0, _REPO_ROOT)
+ 
+-USE_MOCK = False  # passer ├á False une fois les checkpoints v├®rifi├®s en place
++USE_MOCK = os.environ.get("USE_MOCK", "true").lower() != "false"
+ 
+ N_CLASSES = 200
+ IMAGE_SIZE = 224
+diff --git a/app/backend/requirements.txt b/app/backend/requirements.txt
+index 6bf3be3..92f187d 100644
+--- a/app/backend/requirements.txt
++++ b/app/backend/requirements.txt
+@@ -4,15 +4,11 @@ python-multipart
+ pillow
+ numpy
+ 
++torch
++torchvision
++timm
++mlflow
++
+ # Tests
+ pytest
+-httpx
+-
+-# ├Ç d├®commenter une fois le vrai chargement de mod├¿le activ├® (USE_MOCK=False)
+-# torch
+-# torchvision
+-# timm
+-
+-mlflow
+-torch
+-torchvision
+\ No newline at end of file
++httpx
+\ No newline at end of file
+diff --git a/app/frontend/.dockerignore b/app/frontend/.dockerignore
+new file mode 100644
+index 0000000..9475d79
+--- /dev/null
++++ b/app/frontend/.dockerignore
+@@ -0,0 +1,19 @@
++# --- Node ---
++node_modules/
++.next/
++npm-debug.log*
++*.tsbuildinfo
++next-env.d.ts
++
++# --- Git / OS ---
++.git
++.gitignore
++.DS_Store
++.gitkeep
++
++# --- ├ëditeurs ---
++.vscode/
++.idea/
++
++# --- Logs ---
++*.log
+\ No newline at end of file
+diff --git a/app/frontend/Dockerfile b/app/frontend/Dockerfile
+new file mode 100644
+index 0000000..7c2dc06
+--- /dev/null
++++ b/app/frontend/Dockerfile
+@@ -0,0 +1,61 @@
++# ============================================================
++# Dockerfile ÔÇö Frontend Next.js (ViT vs CNN Demo)
++# Build multi-stage optimis├® pour la production
++# ============================================================
++
++# ------------------------------------------------------------
++# ├ëtape 1 : Installation des d├®pendances
++# ------------------------------------------------------------
++FROM node:20-alpine AS deps
++RUN apk add --no-cache libc6-compat
++WORKDIR /app
++
++COPY package.json package-lock.json ./
++RUN npm ci
++
++# ------------------------------------------------------------
++# ├ëtape 2 : Build de l'application Next.js
++# ------------------------------------------------------------
++FROM node:20-alpine AS builder
++RUN apk add --no-cache libc6-compat
++WORKDIR /app
++
++COPY --from=deps /app/node_modules ./node_modules
++COPY . .
++
++# Argument pour injecter l'URL du backend au build time (par d├®faut localhost:8000)
++ARG NEXT_PUBLIC_API_URL=http://localhost:8000
++ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
++ENV NEXT_TELEMETRY_DISABLED=1
++ENV NODE_ENV=production
++
++RUN npm run build
++
++# ------------------------------------------------------------
++# ├ëtape 3 : Runner de production autonome & l├®ger
++# ------------------------------------------------------------
++FROM node:20-alpine AS runner
++RUN apk add --no-cache libc6-compat curl
++WORKDIR /app
++
++ENV NODE_ENV=production
++ENV NEXT_TELEMETRY_DISABLED=1
++ENV PORT=3000
++ENV HOSTNAME="0.0.0.0"
++
++# Utilisateur non-root s├®curis├®
++RUN addgroup --system --gid 1001 nodejs && \
++    adduser --system --uid 1001 nextjs
++
++COPY --from=builder /app/public ./public
++COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
++COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
++
++USER nextjs
++
++EXPOSE 3000
++
++HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
++    CMD curl -f http://localhost:3000/ || exit 1
++
++CMD ["node", "server.js"]
+\ No newline at end of file
+diff --git a/app/frontend/next.config.js b/app/frontend/next.config.js
+index 91ef62f..610d950 100644
+--- a/app/frontend/next.config.js
++++ b/app/frontend/next.config.js
+@@ -1,6 +1,9 @@
+ /** @type {import('next').NextConfig} */
+ const nextConfig = {
+   reactStrictMode: true,
++  // Requis pour le build Docker : g├®n├¿re un serveur Node autonome
++  // dans .next/standalone (utilis├® par app/frontend/Dockerfile)
++  output: "standalone",
+ };
+ 
+ module.exports = nextConfig;
+diff --git a/app/frontend/public/.gitkeep b/app/frontend/public/.gitkeep
+new file mode 100644
+index 0000000..3b9d9b7
+--- /dev/null
++++ b/app/frontend/public/.gitkeep
+@@ -0,0 +1 @@
++# Dossier public du frontend Next.js
+diff --git a/docker-compose.yml b/docker-compose.yml
+new file mode 100644
+index 0000000..5da8402
+--- /dev/null
++++ b/docker-compose.yml
+@@ -0,0 +1,82 @@
++services:
++
++  # ------------------------------------------------------------
++  # Backend API (FastAPI + Inf├®rence PyTorch ViT / ResNet)
++  # ------------------------------------------------------------
++  backend:
++    build:
++      context: .
++      dockerfile: Dockerfile
++    container_name: vit-cnn-backend
++    ports:
++      - "${BACKEND_PORT:-8000}:8000"
++    environment:
++      - USE_MOCK=${USE_MOCK:-false}
++      - PYTHONUNBUFFERED=1
++      - CUB_DATA_ROOT=/app/data/CUB_200_2011/CUB_200_2011
++      - CUB_OUT_DIR=/app/data/data_processed
++      - CUB_METADATA_CSV=/app/data/data_processed/metadata.csv
++    volumes:
++      # Montage en lecture seule pour pouvoir mettre ├á jour les checkpoints sans rebuild
++      - ./data/data_processed:/app/data/data_processed:ro
++      - ./results/runs:/app/results/runs:ro
++    healthcheck:
++      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
++      interval: 15s
++      timeout: 5s
++      retries: 5
++      start_period: 25s
++    restart: unless-stopped
++    networks:
++      - vit-cnn-net
++
++  # ------------------------------------------------------------
++  # Frontend D├®mo (Next.js 14 Standalone)
++  # ------------------------------------------------------------
++  frontend:
++    build:
++      context: ./app/frontend
++      dockerfile: Dockerfile
++      args:
++        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
++    container_name: vit-cnn-frontend
++    ports:
++      - "${FRONTEND_PORT:-3000}:3000"
++    depends_on:
++      backend:
++        condition: service_healthy
++    healthcheck:
++      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
++      interval: 20s
++      timeout: 5s
++      retries: 3
++      start_period: 15s
++    restart: unless-stopped
++    networks:
++      - vit-cnn-net
++
++  # ------------------------------------------------------------
++  # MLflow UI (Visualisation des exp├®riences et m├®triques)
++  # Activable via: docker compose --profile mlflow up
++  # ------------------------------------------------------------
++  mlflow:
++    profiles:
++      - mlflow
++      - all
++    build:
++      context: .
++      dockerfile: Dockerfile
++    container_name: vit-cnn-mlflow
++    command: ["mlflow", "ui", "--backend-store-uri", "sqlite:////app/mlflow.db", "--artifacts-destination", "/app/mlruns", "--host", "0.0.0.0", "--port", "5000"]
++    ports:
++      - "${MLFLOW_PORT:-5000}:5000"
++    volumes:
++      - ./mlflow.db:/app/mlflow.db
++      - ./mlruns:/app/mlruns
++    restart: unless-stopped
++    networks:
++      - vit-cnn-net
++
++networks:
++  vit-cnn-net:
++    driver: bridge
+\ No newline at end of file
+diff --git a/docker-start.bat b/docker-start.bat
+new file mode 100644
+index 0000000..7fb7faa
+--- /dev/null
++++ b/docker-start.bat
+@@ -0,0 +1,42 @@
++@echo off
++REM ============================================================
++REM ViT vs CNN ÔÇö Script de lancement Docker (Windows)
++REM ============================================================
++
++echo ============================================================
++echo   Lancement de ViT vs CNN via Docker Compose
++echo ============================================================
++
++where docker >nul 2>nul
++if %ERRORLEVEL% neq 0 (
++    echo [ERREUR] Docker n'est pas installe ou n'est pas dans le PATH.
++    echo Veuillez installer Docker Desktop et vous assurer qu'il est demarre.
++    pause
++    exit /b 1
++)
++
++if not exist .env (
++    echo [INFO] Creation du fichier .env depuis .env.example...
++    copy .env.example .env
++)
++
++echo [INFO] Construction et demarrage des conteneurs...
++docker compose up --build -d
++
++if %ERRORLEVEL% equ 0 (
++    echo.
++    echo ============================================================
++    echo   Application lancee avec succes !
++    echo ============================================================
++    echo   - Frontend D├®mo  : http://localhost:3000
++    echo   - Backend API    : http://localhost:8000/docs
++    echo   - MLflow (opt.)  : http://localhost:5000 (lancer avec: docker compose --profile mlflow up)
++    echo ============================================================
++    echo Pour voir les logs en direct : docker compose logs -f
++    echo Pour arreter l'application    : docker compose down
++    echo.
++) else (
++    echo [ERREUR] Une erreur est survenue lors du demarrage des conteneurs.
++)
++
++pause
+diff --git a/docker-start.sh b/docker-start.sh
+new file mode 100644
+index 0000000..243fa2e
+--- /dev/null
++++ b/docker-start.sh
+@@ -0,0 +1,35 @@
++#!/usr/bin/env bash
++# ============================================================
++# ViT vs CNN ÔÇö Script de lancement Docker (Linux / macOS)
++# ============================================================
++
++set -e
++
++echo "============================================================"
++echo "  Lancement de ViT vs CNN via Docker Compose"
++echo "============================================================"
++
++if ! command -v docker &> /dev/null; then
++    echo "[ERREUR] Docker n'est pas install├® ou inaccessible dans le PATH."
++    exit 1
++fi
++
++if [ ! -f .env ]; then
++    echo "[INFO] Cr├®ation du fichier .env depuis .env.example..."
++    cp .env.example .env
++fi
++
++echo "[INFO] Construction et d├®marrage des conteneurs..."
++docker compose up --build -d
++
++echo ""
++echo "============================================================"
++echo "  Application lanc├®e avec succ├¿s !"
++echo "============================================================"
++echo "  - Frontend D├®mo  : http://localhost:3000"
++echo "  - Backend API    : http://localhost:8000/docs"
++echo "  - MLflow (opt.)  : http://localhost:5000 (docker compose --profile mlflow up)"
++echo "============================================================"
++echo "Pour voir les logs : docker compose logs -f"
++echo "Pour arr├¬ter       : docker compose down"
++echo ""
+diff --git a/requirements.txt b/requirements.txt
+index 39b346e..adbd9e0 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,13 +1,28 @@
+-pandas
+-pillow
+-scikit-learn
+-matplotlib
++# ============================================================
++# ViT vs CNN ÔÇö D├®pendances globales du projet
++# ============================================================
+ 
++# --- Traitement de donn├®es & Visualisation ---
++pandas>=2.0.0
++pillow>=10.0.0
++scikit-learn>=1.3.0
++matplotlib>=3.7.0
+ numpy==1.26.4
+ scipy==1.13.1
+ 
++# --- Deep Learning & Mod├¿les (PyTorch + timm) ---
+ torch==2.2.2
+ torchvision==0.17.2
+ timm==1.0.28
+ 
+-mlflow==3.15.1
+\ No newline at end of file
++# --- API Backend & Serveur Web (FastAPI) ---
++fastapi>=0.110.0
++uvicorn[standard]>=0.28.0
++python-multipart>=0.0.9
++
++# --- Suivi d'exp├®riences ---
++mlflow==3.15.1
++
++# --- Tests & Client HTTP ---
++pytest>=8.0.0
++httpx>=0.27.0
+\ No newline at end of file
+diff --git a/results/final_results.csv b/results/final_results.csv
+index 2117bd6..9041944 100644
+--- a/results/final_results.csv
++++ b/results/final_results.csv
+@@ -1,13 +1,13 @@
+ model,top1_accuracy,top5_accuracy,test_loss,n_params,eval_time_sec
+-resnet50_best,0.7186744908526062,0.9357956506731101,1.053603423024442,23917832,733.6
+-resnet50_fraction_10,0.05108733172247152,0.13945460821539524,5.130936332929122,23917832,968.2
+-resnet50_fraction_25,0.23472557818432863,0.4887814981014843,3.6532112286343508,23917832,837.7
+-resnet50_fraction_50,0.48740075940628236,0.8111839834311356,2.094745202643895,23917832,891.6
+-vit_pretrained_best,0.09941318605453918,0.2537107352433552,4.65231967342694,21742664,935.8
+-vit_pretrained_patch32_best,0.5384880911287538,0.835001725923369,1.8115463941970447,22570952,358.4
+-vit_scratch_best,0.010700724887814981,0.04746289264756645,5.17616519690959,11095880,573.6
+-vit_scratch_fraction_10,0.010873317224715223,0.044701415257162584,5.373323363520418,11095880,479.2
+-vit_scratch_fraction_25,0.009665170866413532,0.04884363134276838,5.286252153631651,11095880,510.1
+-vit_scratch_fraction_50,0.021574042112530202,0.07076285812909906,5.122305611309859,11095880,506.1
+-vit_scratch_patch16_noaug_best,0.021401449775629963,0.09043838453572661,5.022151223618201,11095880,502.9
+-vit_scratch_patch32_best,0.02002071108042803,0.08457024508111839,5.069652386521486,11924168,218.1
++resnet50_best,0.7186744908526062,0.9357956506731101,1.053603423024442,23917832,921.9
++resnet50_fraction_10,0.05108733172247152,0.13945460821539524,5.130936332929122,23917832,1106.0
++resnet50_fraction_25,0.23472557818432863,0.4887814981014843,3.6532112286343508,23917832,873.6
++resnet50_fraction_50,0.48740075940628236,0.8111839834311356,2.094745202643895,23917832,1004.7
++vit_pretrained_best,0.09941318605453918,0.2537107352433552,4.65231967342694,21742664,687.9
++vit_pretrained_patch32_best,0.5384880911287538,0.835001725923369,1.8115463941970447,22570952,307.2
++vit_scratch_best,0.010700724887814981,0.04746289264756645,5.17616519690959,11095880,560.3
++vit_scratch_fraction_10,0.010873317224715223,0.044701415257162584,5.373323363520418,11095880,531.6
++vit_scratch_fraction_25,0.009665170866413532,0.04884363134276838,5.286252153631651,11095880,340.2
++vit_scratch_fraction_50,0.021574042112530202,0.07076285812909906,5.122305611309859,11095880,315.7
++vit_scratch_patch16_noaug_best,0.021401449775629963,0.09043838453572661,5.022151223618201,11095880,19747.6
++vit_scratch_patch32_best,0.02002071108042803,0.08457024508111839,5.069652386521486,11924168,386.2
