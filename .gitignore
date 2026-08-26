@@ -170,3 +170,7 @@ report/*.aux
 report/*.log
 report/*.out
 report/*.pdf
+
+# Git patch / reject artifacts
+*.rej
+*.patch

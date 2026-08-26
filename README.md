@@ -4,8 +4,8 @@ Projet M1 IA — comparaison Vision Transformer vs CNN sur une tâche de classif
 
 ## Équipe
 - A — Data / Experiment Engineer : SONHOUIN Abdoul-raouf
-- B — Model / Research Engineer : [Nom]
-- C — Reporting / Backend Developer : [Nom]
+- B — Model / Research Engineer : NGARTOBAYE OUMAROU BILLY
+- C — Reporting / Backend Developer : YEYE Koffi Gagnon
 
 ## Structure du repo
 
